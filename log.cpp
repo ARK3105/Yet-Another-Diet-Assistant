@@ -1,16 +1,5 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <map>
-#include <string>
-#include <algorithm>
-#include <ctime>
-#include <stack>
-#include <memory>
-#include <set>
-#include <sstream>
-#include <iomanip>
-#include <chrono>
+#include <bits/stdc++.h>
+using namespace std;
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -21,11 +10,11 @@ class FoodEntry;
 
 // Basic data structures
 struct Food {
-    std::string name;
-    std::string type;  // "basic" or "composite"
+    string name;
+    string type;  // "basic" or "composite"
     double calories;
-    std::vector<std::string> keywords;
-    std::map<std::string, double> components;  // For composite foods: component name -> servings
+    vector<string> keywords;
+    map<string, double> components;  // For composite foods: component name -> servings
 
     Food() = default;
     
@@ -46,42 +35,43 @@ struct Food {
     }
 };
 
-// Food log entry for a specific day
+// Food log entry for a specific date
 class FoodEntry {
 public:
-    std::string foodName;
+    string foodName;
     double servings;
     double calories;
 
-    FoodEntry(const std::string& name, double servs, double cals) 
+    FoodEntry(const string& name, double servs, double cals) 
         : foodName(name), servings(servs), calories(cals) {}
 };
 
 // Date handling utility
 class DateUtil {
 public:
-    static std::string getCurrentDate() {
-        auto now = std::chrono::system_clock::now();
-        auto time = std::chrono::system_clock::to_time_t(now);
-        std::tm tm = *std::localtime(&time);
+    static string getCurrentDate() {
+        auto now = chrono::system_clock::now();
+        auto time = chrono::system_clock::to_time_t(now);
+        tm tm = *localtime(&time);
         
-        std::stringstream ss;
-        ss << std::put_time(&tm, "%Y-%m-%d");
+        stringstream ss;
+        ss << put_time(&tm, "%Y-%m-%d");
         return ss.str();
     }
     
-    static bool isValidDate(const std::string& dateStr) {
+    static bool isValidDate(const string& dateStr) {
+        
         if (dateStr.length() != 10) return false;
         
         // Check format: YYYY-MM-DD
         for (int i = 0; i < 10; i++) {
             if ((i == 4 || i == 7) && dateStr[i] != '-') return false;
-            else if (i != 4 && i != 7 && !std::isdigit(dateStr[i])) return false;
+            else if (i != 4 && i != 7 && !isdigit(dateStr[i])) return false;
         }
         
-        int year = std::stoi(dateStr.substr(0, 4));
-        int month = std::stoi(dateStr.substr(5, 2));
-        int day = std::stoi(dateStr.substr(8, 2));
+        int year = stoi(dateStr.substr(0, 4));
+        int month = stoi(dateStr.substr(5, 2));
+        int day = stoi(dateStr.substr(8, 2));
         
         if (month < 1 || month > 12) return false;
         
@@ -102,21 +92,21 @@ public:
     virtual ~Command() = default;
     virtual void execute() = 0;
     virtual void undo() = 0;
-    virtual std::string getDescription() const = 0;
+    virtual string getDescription() const = 0;
 };
 
 // Food diary main class
 class FoodDiary {
 private:
-    std::string databaseFile;
-    std::string logFile;
-    std::map<std::string, Food> foods;
-    std::map<std::string, std::vector<FoodEntry>> dailyLogs;
-    std::stack<std::shared_ptr<Command>> undoStack;
-    std::string currentDate;
+    string databaseFile;
+    string logFile;
+    map<string, Food> foods;
+    map<string, vector<FoodEntry>> dailyLogs;
+    stack<shared_ptr<Command>> undoStack;
+    string currentDate;
 
 public:
-    FoodDiary(const std::string& dbFile, const std::string& log) 
+    FoodDiary(const string& dbFile, const string& log) 
         : databaseFile(dbFile), logFile(log), currentDate(DateUtil::getCurrentDate()) {
         loadDatabase();
         loadLogs();
@@ -129,9 +119,9 @@ public:
     // Database operations
     void loadDatabase() {
         try {
-            std::ifstream file(databaseFile);
+            ifstream file(databaseFile);
             if (!file.is_open()) {
-                std::cerr << "Unable to open database file: " << databaseFile << std::endl;
+                cerr << "Unable to open database file: " << databaseFile << endl;
                 return;
             }
 
@@ -144,18 +134,18 @@ public:
                 foods[food.name] = food;
             }
             
-            std::cout << "Loaded " << foods.size() << " foods from database." << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Error loading database: " << e.what() << std::endl;
+            cout << "Loaded " << foods.size() << " foods from database." << endl;
+        } catch (const exception& e) {
+            cerr << "Error loading database: " << e.what() << endl;
         }
     }
 
     // Log operations
     void loadLogs() {
         try {
-            std::ifstream file(logFile);
+            ifstream file(logFile);
             if (!file.is_open()) {
-                std::cout << "No existing log file found. Creating a new one." << std::endl;
+                cout << "No existing log file found. Creating a new one." << endl;
                 return;
             }
 
@@ -165,16 +155,16 @@ public:
 
             for (auto& [date, entries] : j.items()) {
                 for (const auto& entry : entries) {
-                    std::string foodName = entry["food"];
+                    string foodName = entry["food"];
                     double servings = entry["servings"];
                     double calories = entry["calories"];
                     dailyLogs[date].emplace_back(foodName, servings, calories);
                 }
             }
             
-            std::cout << "Loaded food logs for " << dailyLogs.size() << " days." << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Error loading logs: " << e.what() << std::endl;
+            cout << "Loaded food logs for " << dailyLogs.size() << " days." << endl;
+        } catch (const exception& e) {
+            cerr << "Error loading logs: " << e.what() << endl;
         }
     }
 
@@ -196,18 +186,18 @@ public:
                 j[date] = dateEntries;
             }
             
-            std::ofstream file(logFile);
+            ofstream file(logFile);
             if (!file.is_open()) {
-                std::cerr << "Unable to open log file for writing: " << logFile << std::endl;
+                cerr << "Unable to open log file for writing: " << logFile << endl;
                 return;
             }
             
-            file << std::setw(4) << j;
+            file << setw(4) << j;
             file.close();
             
-            std::cout << "Logs saved successfully." << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Error saving logs: " << e.what() << std::endl;
+            cout << "Logs saved successfully." << endl;
+        } catch (const exception& e) {
+            cerr << "Error saving logs: " << e.what() << endl;
         }
     }
 
@@ -215,13 +205,13 @@ public:
     class AddFoodCommand : public Command {
     private:
         FoodDiary& diary;
-        std::string date;
-        std::string foodName;
+        string date;
+        string foodName;
         double servings;
         double calories;
         
     public:
-        AddFoodCommand(FoodDiary& d, const std::string& dt, const std::string& name, double servs) 
+        AddFoodCommand(FoodDiary& d, const string& dt, const string& name, double servs) 
             : diary(d), date(dt), foodName(name), servings(servs) {
             // Calculate calories based on food definition
             auto it = diary.foods.find(foodName);
@@ -241,7 +231,7 @@ public:
             if (!entries.empty()) {
                 // Remove the latest entry with this food name
                 for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
-                    if (it->foodName == foodName && std::abs(it->servings - servings) < 0.001) {
+                    if (it->foodName == foodName && abs(it->servings - servings) < 0.001) {
                         entries.erase((it + 1).base());
                         break;
                     }
@@ -254,8 +244,8 @@ public:
             }
         }
         
-        std::string getDescription() const override {
-            std::stringstream ss;
+        string getDescription() const override {
+            stringstream ss;
             ss << "Add " << servings << " serving(s) of " << foodName << " (" 
                << calories << " calories) on " << date;
             return ss.str();
@@ -266,12 +256,12 @@ public:
     class DeleteFoodCommand : public Command {
     private:
         FoodDiary& diary;
-        std::string date;
+        string date;
         size_t index;
         FoodEntry deletedEntry;
         
     public:
-        DeleteFoodCommand(FoodDiary& d, const std::string& dt, size_t idx) 
+        DeleteFoodCommand(FoodDiary& d, const string& dt, size_t idx) 
             : diary(d), date(dt), index(idx), 
               deletedEntry("", 0, 0) {
             // Store the entry for potential undo
@@ -298,8 +288,8 @@ public:
             diary.dailyLogs[date].push_back(deletedEntry);
         }
         
-        std::string getDescription() const override {
-            std::stringstream ss;
+        string getDescription() const override {
+            stringstream ss;
             ss << "Delete " << deletedEntry.servings << " serving(s) of " 
                << deletedEntry.foodName << " from " << date;
             return ss.str();
@@ -307,40 +297,40 @@ public:
     };
 
     // Date management
-    void setCurrentDate(const std::string& date) {
+    void setCurrentDate(const string& date) {
         if (DateUtil::isValidDate(date)) {
             currentDate = date;
-            std::cout << "Current date set to: " << currentDate << std::endl;
+            cout << "Current date set to: " << currentDate << endl;
         } else {
-            std::cerr << "Invalid date format. Please use YYYY-MM-DD." << std::endl;
+            cerr << "Invalid date format. Please use YYYY-MM-DD." << endl;
         }
     }
 
-    std::string getCurrentDate() const {
+    string getCurrentDate() const {
         return currentDate;
     }
 
     // Food search functions
-    std::vector<std::string> searchFoodsByKeywords(const std::vector<std::string>& keywords, bool matchAll) {
-        std::vector<std::string> results;
+    vector<string> searchFoodsByKeywords(const vector<string>& keywords, bool matchAll) {
+        vector<string> results;
         
         for (const auto& [name, food] : foods) {
             bool matches = matchAll;
             
             for (const auto& keyword : keywords) {
                 bool keywordFound = false;
-                std::string lowerKeyword = toLower(keyword);
+                string lowerKeyword = toLower(keyword);
                 
                 // Check if keyword is in food keywords
                 for (const auto& foodKeyword : food.keywords) {
-                    if (toLower(foodKeyword).find(lowerKeyword) != std::string::npos) {
+                    if (toLower(foodKeyword).find(lowerKeyword) != string::npos) {
                         keywordFound = true;
                         break;
                     }
                 }
                 
                 // Also check if keyword is in food name
-                if (!keywordFound && toLower(food.name).find(lowerKeyword) != std::string::npos) {
+                if (!keywordFound && toLower(food.name).find(lowerKeyword) != string::npos) {
                     keywordFound = true;
                 }
                 
@@ -367,95 +357,95 @@ public:
 
     // Food management
     void listAllFoods() const {
-        std::cout << "\nAll Foods in Database:\n";
-        std::cout << std::setw(30) << std::left << "Name" 
-                  << std::setw(15) << std::left << "Type"
-                  << std::setw(15) << std::right << "Calories" << std::endl;
-        std::cout << std::string(60, '-') << std::endl;
+        cout << "\nAll Foods in Database:\n";
+        cout << setw(30) << left << "Name" 
+                  << setw(15) << left << "Type"
+                  << setw(15) << right << "Calories" << endl;
+        cout << string(60, '-') << endl;
         
         for (const auto& [name, food] : foods) {
-            std::cout << std::setw(30) << std::left << name 
-                      << std::setw(15) << std::left << food.type
-                      << std::setw(15) << std::right << food.calories << std::endl;
+            cout << setw(30) << left << name 
+                      << setw(15) << left << food.type
+                      << setw(15) << right << food.calories << endl;
         }
-        std::cout << std::endl;
+        cout << endl;
     }
 
-    void displayFoodDetails(const std::string& foodName) const {
+    void displayFoodDetails(const string& foodName) const {
         auto it = foods.find(foodName);
         if (it == foods.end()) {
-            std::cout << "Food not found: " << foodName << std::endl;
+            cout << "Food not found: " << foodName << endl;
             return;
         }
         
         const Food& food = it->second;
         
-        std::cout << "\nFood Details: " << food.name << std::endl;
-        std::cout << std::string(50, '-') << std::endl;
-        std::cout << "Type: " << food.type << std::endl;
-        std::cout << "Calories: " << food.calories << std::endl;
+        cout << "\nFood Details: " << food.name << endl;
+        cout << string(50, '-') << endl;
+        cout << "Type: " << food.type << endl;
+        cout << "Calories: " << food.calories << endl;
         
-        std::cout << "Keywords: ";
+        cout << "Keywords: ";
         for (size_t i = 0; i < food.keywords.size(); i++) {
-            std::cout << food.keywords[i];
+            cout << food.keywords[i];
             if (i < food.keywords.size() - 1) {
-                std::cout << ", ";
+                cout << ", ";
             }
         }
-        std::cout << std::endl;
+        cout << endl;
         
         if (food.type == "composite") {
-            std::cout << "\nComponents:" << std::endl;
+            cout << "\nComponents:" << endl;
             for (const auto& [compName, servings] : food.components) {
-                std::cout << "- " << compName << ": " << servings << " serving(s)" << std::endl;
+                cout << "- " << compName << ": " << servings << " serving(s)" << endl;
             }
         }
-        std::cout << std::endl;
+        cout << endl;
     }
 
     // Log display
-    void displayDailyLog(const std::string& date) const {
+    void displayDailyLog(const string& date) const {
         auto it = dailyLogs.find(date);
         if (it == dailyLogs.end() || it->second.empty()) {
-            std::cout << "No food entries for " << date << std::endl;
+            cout << "No food entries for " << date << endl;
             return;
         }
         
         double totalCalories = 0.0;
         
-        std::cout << "\nFood Log for " << date << ":\n";
-        std::cout << std::setw(5) << std::left << "No."
-                  << std::setw(30) << std::left << "Food" 
-                  << std::setw(15) << std::left << "Servings"
-                  << std::setw(15) << std::right << "Calories" << std::endl;
-        std::cout << std::string(65, '-') << std::endl;
+        cout << "\nFood Log for " << date << ":\n";
+        cout << setw(5) << left << "No."
+                  << setw(30) << left << "Food" 
+                  << setw(15) << left << "Servings"
+                  << setw(15) << right << "Calories" << endl;
+        cout << string(65, '-') << endl;
         
         int count = 1;
         for (const auto& entry : it->second) {
-            std::cout << std::setw(5) << std::left << count++
-                      << std::setw(30) << std::left << entry.foodName 
-                      << std::setw(15) << std::left << entry.servings
-                      << std::setw(15) << std::right << entry.calories << std::endl;
+            cout << setw(5) << left << count++
+                      << setw(30) << left << entry.foodName 
+                      << setw(15) << left << entry.servings
+                      << setw(15) << right << entry.calories << endl;
             
             totalCalories += entry.calories;
         }
         
-        std::cout << std::string(65, '-') << std::endl;
-        std::cout << std::setw(50) << std::left << "Total Calories:" 
-                  << std::setw(15) << std::right << totalCalories << std::endl;
-        std::cout << std::endl;
+        cout << string(65, '-') << endl;
+        cout << setw(50) << left << "Total Calories:" 
+                  << setw(15) << right << totalCalories << endl;
+        cout << endl;
     }
 
     // Command execution with undo support
-    void executeCommand(std::shared_ptr<Command> command) {
+    void executeCommand(shared_ptr<Command> command) {
         command->execute();
         undoStack.push(command);
-        std::cout << "Executed: " << command->getDescription() << std::endl;
+        cout << "Executed: " << command->getDescription() << endl;
     }
 
     void undo() {
         if (undoStack.empty()) {
-            std::cout << "Nothing to undo." << std::endl;
+            cout << "Nothing to undo." << endl;
             return;
         }
         
@@ -463,53 +453,53 @@ public:
         undoStack.pop();
         
         command->undo();
-        std::cout << "Undone: " << command->getDescription() << std::endl;
+        cout << "Undone: " << command->getDescription() << endl;
     }
 
     // Utility functions
-    static std::string toLower(const std::string& str) {
-        std::string result = str;
-        std::transform(result.begin(), result.end(), result.begin(), 
-                       [](unsigned char c){ return std::tolower(c); });
+    static string toLower(const string& str) {
+        string result = str;
+        transform(result.begin(), result.end(), result.begin(), 
+                       [](unsigned char c){ return tolower(c); });
         return result;
     }
 
     // Food entry management
-    void addFood(const std::string& date, const std::string& foodName, double servings) {
+    void addFood(const string& date, const string& foodName, double servings) {
         auto it = foods.find(foodName);
         if (it == foods.end()) {
-            std::cerr << "Food not found: " << foodName << std::endl;
+            cerr << "Food not found: " << foodName << endl;
             return;
         }
         
-        auto command = std::make_shared<AddFoodCommand>(*this, date, foodName, servings);
+        auto command = make_shared<AddFoodCommand>(*this, date, foodName, servings);
         executeCommand(command);
     }
 
-    void deleteFood(const std::string& date, size_t index) {
+    void deleteFood(const string& date, size_t index) {
         auto it = dailyLogs.find(date);
         if (it == dailyLogs.end() || index >= it->second.size()) {
-            std::cerr << "Invalid food entry index." << std::endl;
+            cerr << "Invalid food entry index." << endl;
             return;
         }
         
-        auto command = std::make_shared<DeleteFoodCommand>(*this, date, index);
+        auto command = make_shared<DeleteFoodCommand>(*this, date, index);
         executeCommand(command);
     }
 
     // User interface methods
     void addFoodToLog() {
         // First, let the user choose how to select a food
-        std::cout << "\nSelect food by:\n";
-        std::cout << "1. Browse all foods\n";
-        std::cout << "2. Search by keywords\n";
-        std::cout << "Choice: ";
+        cout << "\nSelect food by:\n";
+        cout << "1. Browse all foods\n";
+        cout << "2. Search by keywords\n";
+        cout << "Choice: ";
         
         int choice;
-        std::cin >> choice;
-        std::cin.ignore();
+        cin >> choice;
+        cin.ignore();
         
-        std::vector<std::string> foodOptions;
+        vector<string> foodOptions;
         
         if (choice == 1) {
             // List all foods for selection
@@ -520,71 +510,71 @@ public:
                 foodOptions.push_back(name);
             }
         } else if (choice == 2) {
-            std::cout << "Enter keywords (separated by spaces): ";
-            std::string keywordInput;
-            std::getline(std::cin, keywordInput);
+            cout << "Enter keywords (separated by spaces): ";
+            string keywordInput;
+            getline(cin, keywordInput);
             
             // Split input into keywords
-            std::vector<std::string> keywords;
-            std::stringstream ss(keywordInput);
-            std::string keyword;
+            vector<string> keywords;
+            stringstream ss(keywordInput);
+            string keyword;
             while (ss >> keyword) {
                 keywords.push_back(keyword);
             }
             
             if (keywords.empty()) {
-                std::cout << "No keywords provided." << std::endl;
+                cout << "No keywords provided." << endl;
                 return;
             }
             
-            std::cout << "Match: 1. All keywords or 2. Any keyword? ";
+            cout << "Match: 1. All keywords or 2. Any keyword? ";
             int matchChoice;
-            std::cin >> matchChoice;
-            std::cin.ignore();
+            cin >> matchChoice;
+            cin.ignore();
             
             bool matchAll = (matchChoice == 1);
             foodOptions = searchFoodsByKeywords(keywords, matchAll);
             
             if (foodOptions.empty()) {
-                std::cout << "No foods match the given keywords." << std::endl;
+                cout << "No foods match the given keywords." << endl;
                 return;
             }
             
             // Display the matching foods
-            std::cout << "\nMatching Foods:\n";
+            cout << "\nMatching Foods:\n";
             for (size_t i = 0; i < foodOptions.size(); i++) {
-                std::cout << (i + 1) << ". " << foodOptions[i] << std::endl;
+                cout << (i + 1) << ". " << foodOptions[i] << endl;
             }
         } else {
-            std::cout << "Invalid choice." << std::endl;
+            cout << "Invalid choice." << endl;
             return;
         }
         
         // Let the user select a food
         if (foodOptions.empty()) {
-            std::cout << "No foods available for selection." << std::endl;
+            cout << "No foods available for selection." << endl;
             return;
         }
         
-        std::cout << "\nSelect food number (1-" << foodOptions.size() << "): ";
+        cout << "\nSelect food number (1-" << foodOptions.size() << "): ";
         int foodIndex;
-        std::cin >> foodIndex;
+        cin >> foodIndex;
         
         if (foodIndex < 1 || foodIndex > static_cast<int>(foodOptions.size())) {
-            std::cout << "Invalid food selection." << std::endl;
+            cout << "Invalid food selection." << endl;
             return;
         }
         
-        std::string selectedFood = foodOptions[foodIndex - 1];
+        string selectedFood = foodOptions[foodIndex - 1];
         
         // Ask for number of servings
-        std::cout << "Enter number of servings: ";
+        cout << "Enter number of servings: ";
         double servings;
-        std::cin >> servings;
-        std::cin.ignore();
+        cin >> servings;
+        cin.ignore();
         
         if (servings <= 0) {
-            std::cout << "Invalid number of servings." << std::endl;
+            cout << "Invalid number of servings." << endl;
             return;
         }
         
@@ -597,17 +587,17 @@ public:
         
         auto it = dailyLogs.find(currentDate);
         if (it == dailyLogs.end() || it->second.empty()) {
-            std::cout << "No entries to delete." << std::endl;
+            cout << "No entries to delete." << endl;
             return;
         }
         
-        std::cout << "Enter entry number to delete: ";
+        cout << "Enter entry number to delete: ";
         int index;
-        std::cin >> index;
-        std::cin.ignore();
+        cin >> index;
+        cin.ignore();
         
         if (index < 1 || index > static_cast<int>(it->second.size())) {
-            std::cout << "Invalid entry number." << std::endl;
+            cout << "Invalid entry number." << endl;
             return;
         }
         
@@ -615,10 +605,10 @@ public:
     }
 
     void changeDate() {
-        std::cout << "Enter date (YYYY-MM-DD): ";
-        std::string date;
-        std::cin >> date;
-        std::cin.ignore();
+        cout << "Enter date (YYYY-MM-DD): ";
+        string date;
+        cin >> date;
+        cin.ignore();
         
         setCurrentDate(date);
     }
@@ -626,51 +616,51 @@ public:
     void viewFoodDetails() {
         listAllFoods();
         
-        std::cout << "Enter food name: ";
-        std::string foodName;
-        std::getline(std::cin, foodName);
+        cout << "Enter food name: ";
+        string foodName;
+        getline(cin, foodName);
         
         displayFoodDetails(foodName);
     }
 
     void showUndoStack() const {
         if (undoStack.empty()) {
-            std::cout << "Undo stack is empty." << std::endl;
+            cout << "Undo stack is empty." << endl;
             return;
         }
         
-        std::cout << "\nUndo Stack (latest first):\n";
+        cout << "\nUndo Stack (latest first):\n";
         
         // Create a temporary stack to display in reverse order
-        std::stack<std::shared_ptr<Command>> tempStack = undoStack;
+        stack<shared_ptr<Command>> tempStack = undoStack;
         int count = 1;
         
         while (!tempStack.empty()) {
-            std::cout << count++ << ". " << tempStack.top()->getDescription() << std::endl;
+            cout << count++ << ". " << tempStack.top()->getDescription() << endl;
             tempStack.pop();
         }
         
-        std::cout << std::endl;
+        cout << endl;
     }
 
     void runMainMenu() {
         bool running = true;
         
         while (running) {
-            std::cout << "\n--- Food Diary (" << currentDate << ") ---\n";
-            std::cout << "1. Add Food\n";
-            std::cout << "2. View Today's Log\n";
-            std::cout << "3. Delete Food Entry\n";
-            std::cout << "4. View Food Details\n";
-            std::cout << "5. Change Current Date\n";
-            std::cout << "6. Undo Last Action\n";
-            std::cout << "7. View Undo Stack\n";
-            std::cout << "8. Save and Exit\n";
-            std::cout << "Choice: ";
+            cout << "\n--- Food Diary (" << currentDate << ") ---\n";
+            cout << "1. Add Food\n";
+            cout << "2. View Today's Log\n";
+            cout << "3. Delete Food Entry\n";
+            cout << "4. View Food Details\n";
+            cout << "5. Change Current Date\n";
+            cout << "6. Undo Last Action\n";
+            cout << "7. View Undo Stack\n";
+            cout << "8. Save and Exit\n";
+            cout << "Choice: ";
             
             int choice;
-            std::cin >> choice;
-            std::cin.ignore();
+            cin >> choice;
+            cin.ignore();
             
             switch (choice) {
                 case 1:
@@ -699,15 +689,15 @@ public:
                     running = false;
                     break;
                 default:
-                    std::cout << "Invalid choice." << std::endl;
+                    cout << "Invalid choice." << endl;
             }
         }
     }
 };
 
 int main(int argc, char* argv[]) {
-    std::string databaseFile = "food_database.json";
-    std::string logFile = "food_log.json";
+    string databaseFile = "food_database.json";
+    string logFile = "food_log.json";
     
     // Parse command line arguments
     if (argc > 1) {
@@ -721,8 +711,8 @@ int main(int argc, char* argv[]) {
     try {
         FoodDiary diary(databaseFile, logFile);
         diary.runMainMenu();
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+    } catch (const exception& e) {
+        cerr << "Error: " << e.what() << endl;
         return 1;
     }
     
