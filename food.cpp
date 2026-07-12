@@ -3,28 +3,21 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <memory>
 #include <algorithm>
-#include <limits>
+#include <memory>
+#include <map>
+#include <sstream>
+#include <iomanip>
 #include <stack>
 #include <ctime>
-#include <sstream>
-#include <cctype>
+#include <iomanip>
+#include <chrono>
+#include <limits>
 
-// Include nlohmann/json for JSON handling
 #include "json.hpp"
 
 using namespace std;
 using json = nlohmann::json;
-
-// Forward declarations
-class Food;
-class BasicFood;
-class CompositeFood;
-class FoodDatabaseManager;
-class LogManager;
-class ProfileManager;
-// User profile and diet goal tracking classes
 
 enum class Gender
 {
@@ -47,6 +40,10 @@ enum class CalorieCalculationMethod
     HARRIS_BENEDICT,
     MIFFLIN_ST_JEOR
 };
+
+class Food;
+class BasicFood;
+class CompositeFood;
 
 // Base Food class
 class Food
@@ -104,7 +101,7 @@ public:
     BasicFood(const string &name, const vector<string> &keywords, float calories)
         : Food(name, keywords, "basic"), calories(calories) {}
 
-    float getCalories() const override { return calories; }
+    float getCalories() const override { return calories; } // to override getCalories from Food.
 
     static shared_ptr<BasicFood> fromJson(const json &j)
     {
@@ -121,8 +118,7 @@ struct FoodComponent
     shared_ptr<Food> food;
     float servings;
 
-    FoodComponent(shared_ptr<Food> food, float servings)
-        : food(food), servings(servings) {}
+    FoodComponent(shared_ptr<Food> food, float servings) : food(food), servings(servings) {}
 
     json toJson() const
     {
@@ -191,8 +187,10 @@ public:
 // Food Database Manager class
 class FoodDatabaseManager
 {
+public:
+    map<string, shared_ptr<Food>> foods;
+
 private:
-    unordered_map<string, shared_ptr<Food>> foods;
     string databaseFilePath;
     bool modified;
 
@@ -222,7 +220,7 @@ public:
             file >> j;
 
             // Store the entire JSON data for each food
-            unordered_map<string, json> pendingFoods;
+            map<string, json> pendingFoods;
 
             // First pass: load all basic foods and catalogue composite foods
             for (const auto &foodJson : j)
@@ -360,36 +358,37 @@ public:
         return true;
     }
 
-    vector<shared_ptr<Food>> searchFoods(const string &query)
+    vector<shared_ptr<Food>> searchFoodsByKeywords(const vector<string> &keywords, bool matchall)
     {
         vector<shared_ptr<Food>> results;
-        string lowerQuery = query;
-        transform(lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
-
+        // if matchall is there, we need foods with all keywords, else food which atleast one keyword
         for (const auto &[name, food] : foods)
         {
-            // Check if query matches name
-            string lowerName = name;
-            transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-            if (lowerName.find(lowerQuery) != string::npos)
-            {
-                results.push_back(food);
-                continue;
-            }
-
-            // Check if query matches any keyword
-            for (const auto &keyword : food->getKeywords())
+            int cnt = 0;
+            for (auto &keyword : keywords)
             {
                 string lowerKeyword = keyword;
                 transform(lowerKeyword.begin(), lowerKeyword.end(), lowerKeyword.begin(), ::tolower);
-                if (lowerKeyword.find(lowerQuery) != string::npos)
+                for (const auto &foodKeyword : food->getKeywords())
                 {
-                    results.push_back(food);
-                    break;
+                    string lowerFoodKeyword = foodKeyword;
+                    transform(lowerFoodKeyword.begin(), lowerFoodKeyword.end(), lowerFoodKeyword.begin(), ::tolower);
+                    if (lowerFoodKeyword.find(lowerKeyword) != string::npos)
+                    {
+                        cnt++;
+                        break;
+                    }
                 }
             }
+            if (matchall && cnt == keywords.size())
+            {
+                results.push_back(food);
+            }
+            else if (!matchall && cnt > 0)
+            {
+                results.push_back(food);
+            }
         }
-
         return results;
     }
 
@@ -401,36 +400,6 @@ public:
             return it->second;
         }
         return nullptr;
-    }
-    vector<shared_ptr<Food>> searchFoodsByKeywords(const vector<string> &keywords, bool matchAll)
-    {
-        vector<shared_ptr<Food>> results;
-
-        for (const auto &[name, food] : foods)
-        {
-            const auto &foodKeywords = food->getKeywords();
-            int matchCount = 0;
-
-            for (const auto &keyword : keywords)
-            {
-                if (find(foodKeywords.begin(), foodKeywords.end(), keyword) != foodKeywords.end())
-                {
-                    matchCount++;
-                }
-            }
-
-            if ((matchAll && matchCount == keywords.size()) || (!matchAll && matchCount > 0))
-            {
-                results.push_back(food);
-            }
-        }
-
-        return results;
-    }
-
-    shared_ptr<Food> findFoodByName(const string &name)
-    {
-        return getFood(name);
     }
 
     void listAllFoods() const
@@ -449,100 +418,63 @@ public:
     }
 };
 
-// New class for food log entries
-class LogEntry
+// Food log entry for a specific day
+class FoodEntry
 {
 public:
-    shared_ptr<Food> food;
+    string foodName;
     double servings;
+    double calories;
 
-    LogEntry(shared_ptr<Food> f, double s) : food(f), servings(s) {}
-
-    json toJson() const
-    {
-        json j;
-        j["name"] = food->getName();
-        j["servings"] = servings;
-        return j;
-    }
-
-    void display() const
-    {
-        cout << servings << " serving(s) of " << food->getName()
-             << " (" << food->getCalories() * servings << " calories)" << endl;
-    }
+    FoodEntry(const string &name, double servs, double cals)
+        : foodName(name), servings(servs), calories(cals) {}
 };
 
-// Class for managing logs for a specific date
-class DailyLog
+// Date handling utility
+class DateUtil
 {
-private:
-    vector<LogEntry> entries;
-
 public:
-    DailyLog() {}
-
-    void addEntry(shared_ptr<Food> food, double servings)
+    static string getCurrentDate()
     {
-        entries.emplace_back(food, servings);
+        auto now = chrono::system_clock::now();
+        auto time = chrono::system_clock::to_time_t(now);
+        tm tm = *localtime(&time);
+
+        stringstream ss;
+        ss << put_time(&tm, "%Y-%m-%d");
+        return ss.str();
     }
 
-    void removeEntry(int index)
+    static bool isValidDate(const string &dateStr)
     {
-        if (index >= 0 && index < entries.size())
+        if (dateStr.length() != 10)
+            return false;
+
+        // Check format: YYYY-MM-DD
+        for (int i = 0; i < 10; i++)
         {
-            entries.erase(entries.begin() + index);
-        }
-    }
-
-    const vector<LogEntry> &getEntries() const
-    {
-        return entries;
-    }
-
-    double getTotalCalories() const
-    {
-        double total = 0.0;
-        for (const auto &entry : entries)
-        {
-            total += entry.food->getCalories() * entry.servings;
-        }
-        return total;
-    }
-
-    json toJson() const
-    {
-        json j = json::array();
-        for (const auto &entry : entries)
-        {
-            j.push_back(entry.toJson());
-        }
-        return j;
-    }
-
-    void displaySummary() const
-    {
-        cout << "Total entries: " << entries.size() << endl;
-        cout << "Total calories: " << getTotalCalories() << endl;
-    }
-
-    void displayEntries() const
-    {
-        if (entries.empty())
-        {
-            cout << "No entries for this day." << endl;
-            return;
+            if ((i == 4 || i == 7) && dateStr[i] != '-')
+                return false;
+            else if (i != 4 && i != 7 && !isdigit(dateStr[i]))
+                return false;
         }
 
-        cout << "Food Log Entries:" << endl;
-        cout << "-------------------" << endl;
-        for (size_t i = 0; i < entries.size(); ++i)
+        int year = stoi(dateStr.substr(0, 4));
+        int month = stoi(dateStr.substr(5, 2));
+        int day = stoi(dateStr.substr(8, 2));
+
+        if (month < 1 || month > 12)
+            return false;
+
+        int daysInMonth[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+        // Adjust for leap year
+        if (month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0))
         {
-            cout << "[" << i << "] ";
-            entries[i].display();
+            daysInMonth[2] = 29;
         }
-        cout << "-------------------" << endl;
-        cout << "Total calories: " << getTotalCalories() << endl;
+
+        return day >= 1 && day <= daysInMonth[month];
     }
 };
 
@@ -556,155 +488,280 @@ public:
     virtual string getDescription() const = 0;
 };
 
-// Concrete commands for log operations
-class AddEntryCommand : public Command
+// Food diary main class
+class FoodDiary
 {
 private:
-    unordered_map<string, DailyLog> &logs;
-    string date;
-    shared_ptr<Food> food;
-    double servings;
-    bool executed;
-
-public:
-    AddEntryCommand(unordered_map<string, DailyLog> &l, const string &d,
-                    shared_ptr<Food> f, double s)
-        : logs(l), date(d), food(f), servings(s), executed(false) {}
-
-    void execute() override
-    {
-        logs[date].addEntry(food, servings);
-        executed = true;
-    }
-
-    void undo() override
-    {
-        if (executed)
-        {
-            auto &entries = const_cast<vector<LogEntry> &>(logs[date].getEntries());
-            if (!entries.empty())
-            {
-                entries.pop_back();
-            }
-            executed = false;
-        }
-    }
-
-    string getDescription() const override
-    {
-        stringstream ss;
-        ss << "Add " << servings << " serving(s) of " << food->getName() << " to " << date;
-        return ss.str();
-    }
-};
-
-class RemoveEntryCommand : public Command
-{
-private:
-    unordered_map<string, DailyLog> &logs;
-    string date;
-    int index;
-    LogEntry removedEntry;
-    bool executed;
-
-public:
-    RemoveEntryCommand(unordered_map<string, DailyLog> &l, const string &d,
-                       int idx, const LogEntry &entry)
-        : logs(l), date(d), index(idx), removedEntry(entry), executed(false) {}
-
-    void execute() override
-    {
-        logs[date].removeEntry(index);
-        executed = true;
-    }
-
-    void undo() override
-    {
-        if (executed)
-        {
-            logs[date].addEntry(removedEntry.food, removedEntry.servings);
-            executed = false;
-        }
-    }
-
-    string getDescription() const override
-    {
-        stringstream ss;
-        ss << "Remove " << removedEntry.servings << " serving(s) of "
-           << removedEntry.food->getName() << " from " << date;
-        return ss.str();
-    }
-};
-
-// Class to manage all daily logs
-class LogManager
-{
-private:
-    unordered_map<string, DailyLog> logs;
+    string logFile;
+    map<string, vector<FoodEntry>> dailyLogs;
+    stack<shared_ptr<Command>> undoStack;
     string currentDate;
-    stack<unique_ptr<Command>> undoStack;
-    stack<unique_ptr<Command>> redoStack;
     FoodDatabaseManager &dbManager;
-    string logFilePath;
 
 public:
-    double getTotalCaloriesForDate(const string &date) const;
-
-    string getCurrentDateString()
+    FoodDiary(FoodDatabaseManager &db, const string &log)
+        : dbManager(db), logFile(log), currentDate(DateUtil::getCurrentDate())
     {
-        time_t now = time(0);
-        tm *ltm = localtime(&now);
-
-        ostringstream oss;
-        oss << 1900 + ltm->tm_year << "-";
-        oss << setw(2) << setfill('0') << 1 + ltm->tm_mon << "-";
-        oss << setw(2) << setfill('0') << ltm->tm_mday;
-
-        return oss.str();
-    }
-
-    bool validateDateFormat(const string &date)
-    {
-        // Basic validation for YYYY-MM-DD format
-        if (date.length() != 10)
-            return false;
-        if (date[4] != '-' || date[7] != '-')
-            return false;
-
-        for (int i = 0; i < 10; i++)
-        {
-            if (i == 4 || i == 7)
-                continue;
-            if (!isdigit(date[i]))
-                return false;
-        }
-
-        return true;
-    }
-
-public:
-    LogManager(FoodDatabaseManager &manager, const string &logFile)
-        : dbManager(manager), logFilePath(logFile)
-    {
-        currentDate = getCurrentDateString();
         loadLogs();
     }
 
-    ~LogManager()
+    ~FoodDiary()
     {
         saveLogs();
     }
 
-    void executeCommand(unique_ptr<Command> cmd)
+    // Log operations
+    void loadLogs()
     {
-        cmd->execute();
-        undoStack.push(move(cmd));
-
-        // Clear redo stack when a new command is executed
-        while (!redoStack.empty())
+        try
         {
-            redoStack.pop();
+            ifstream file(logFile);
+            if (!file.is_open())
+            {
+                cout << "No existing log file found. Creating a new one." << endl;
+                return;
+            }
+
+            json j;
+            file >> j;
+            file.close();
+
+            for (auto &[date, entries] : j.items())
+            {
+                for (const auto &entry : entries)
+                {
+                    string foodName = entry["food"];
+                    double servings = entry["servings"];
+                    double calories = entry["calories"];
+                    dailyLogs[date].emplace_back(foodName, servings, calories);
+                }
+            }
+
+            cout << "Loaded food logs for " << dailyLogs.size() << " days." << endl;
         }
+        catch (const exception &e)
+        {
+            cerr << "Error loading logs: " << e.what() << endl;
+        }
+    }
+
+    void saveLogs()
+    {
+        try
+        {
+            json j;
+
+            for (const auto &[date, entries] : dailyLogs)
+            {
+                json dateEntries = json::array();
+
+                for (const auto &entry : entries)
+                {
+                    json entryJson;
+                    entryJson["food"] = entry.foodName;
+                    entryJson["servings"] = entry.servings;
+                    entryJson["calories"] = entry.calories;
+                    dateEntries.push_back(entryJson);
+                }
+
+                j[date] = dateEntries;
+            }
+
+            ofstream file(logFile);
+            if (!file.is_open())
+            {
+                cerr << "Unable to open log file for writing: " << logFile << endl;
+                return;
+            }
+
+            file << setw(4) << j;
+            file.close();
+
+            cout << "Logs saved successfully." << endl;
+        }
+        catch (const exception &e)
+        {
+            cerr << "Error saving logs: " << e.what() << endl;
+        }
+    }
+
+    // Command to add a food entry
+    class AddFoodCommand : public Command
+    {
+    private:
+        FoodDiary &diary;
+        string date;
+        string foodName;
+        double servings;
+        double calories;
+
+    public:
+        AddFoodCommand(FoodDiary &d, const string &dt, const string &name, double servs)
+            : diary(d), date(dt), foodName(name), servings(servs)
+        {
+            // Calculate calories based on food definition
+            // auto it = diary.foods.find(foodName);
+            auto it = diary.dbManager.getFood(foodName);
+            if (it != nullptr)
+            {
+                calories = it->getCalories() * servings;
+            }
+            else
+            {
+                // cerr << "Food not found: " << foodName << endl;
+                calories = 0;
+            }
+        }
+
+        void execute() override
+        {
+            diary.dailyLogs[date].emplace_back(foodName, servings, calories);
+        }
+
+        void undo() override
+        {
+            auto &entries = diary.dailyLogs[date];
+            if (!entries.empty())
+            {
+                // Remove the latest entry with this food name
+                for (auto it = entries.rbegin(); it != entries.rend(); ++it)
+                {
+                    if (it->foodName == foodName && abs(it->servings - servings) < 0.001)
+                    {
+                        entries.erase((it + 1).base());
+                        break;
+                    }
+                }
+            }
+
+            // If the daily log is now empty, remove the date entry
+            if (entries.empty())
+            {
+                diary.dailyLogs.erase(date);
+            }
+        }
+
+        string getDescription() const override
+        {
+            stringstream ss;
+            ss << "Add " << servings << " serving(s) of " << foodName << " ("
+               << calories << " calories) on " << date;
+            return ss.str();
+        }
+    };
+
+    // Command to delete a food entry
+    class DeleteFoodCommand : public Command
+    {
+    private:
+        FoodDiary &diary;
+        string date;
+        size_t index;
+        FoodEntry deletedEntry;
+
+    public:
+        DeleteFoodCommand(FoodDiary &d, const string &dt, size_t idx)
+            : diary(d), date(dt), index(idx),
+              deletedEntry("", 0, 0)
+        {
+            // Store the entry for potential undo
+            auto &entries = diary.dailyLogs[date];
+            if (index < entries.size())
+            {
+                deletedEntry = entries[index];
+            }
+        }
+
+        void execute() override
+        {
+            auto &entries = diary.dailyLogs[date];
+            if (index < entries.size())
+            {
+                entries.erase(entries.begin() + index);
+                // If the daily log is now empty, remove the date entry
+                if (entries.empty())
+                {
+                    diary.dailyLogs.erase(date);
+                }
+            }
+        }
+
+        void undo() override
+        {
+            // Re-add the deleted entry
+            diary.dailyLogs[date].push_back(deletedEntry);
+        }
+
+        string getDescription() const override
+        {
+            stringstream ss;
+            ss << "Delete " << deletedEntry.servings << " serving(s) of "
+               << deletedEntry.foodName << " from " << date;
+            return ss.str();
+        }
+    };
+
+    // Date management
+    void setCurrentDate(const string &date)
+    {
+        if (DateUtil::isValidDate(date))
+        {
+            currentDate = date;
+            cout << "Current date set to: " << currentDate << endl;
+        }
+        else
+        {
+            cerr << "Invalid date format. Please use YYYY-MM-DD." << endl;
+        }
+    }
+
+    string getCurrentDate() const
+    {
+        return currentDate;
+    }
+
+    // Log display
+    void displayDailyLog(const string &date) const
+    {
+        auto it = dailyLogs.find(date);
+        if (it == dailyLogs.end() || it->second.empty())
+        {
+            cout << "No food entries for " << date << endl;
+            return;
+        }
+
+        double totalCalories = 0.0;
+
+        cout << "\nFood Log for " << date << ":\n";
+        cout << setw(5) << left << "No."
+             << setw(30) << left << "Food"
+             << setw(15) << left << "Servings"
+             << setw(15) << right << "Calories" << endl;
+        cout << string(65, '-') << endl;
+
+        int count = 1;
+        for (const auto &entry : it->second)
+        {
+            cout << setw(5) << left << count++
+                 << setw(30) << left << entry.foodName
+                 << setw(15) << left << entry.servings
+                 << setw(15) << right << entry.calories << endl;
+
+            totalCalories += entry.calories;
+        }
+
+        cout << string(65, '-') << endl;
+        cout << setw(50) << left << "Total Calories:"
+             << setw(15) << right << totalCalories << endl;
+        cout << endl;
+    }
+
+    // Command execution with undo support
+    void executeCommand(shared_ptr<Command> command)
+    {
+        command->execute();
+        undoStack.push(command);
+        cout << "Executed: " << command->getDescription() << endl;
     }
 
     void undo()
@@ -715,183 +772,224 @@ public:
             return;
         }
 
-        cout << "Undoing: " << undoStack.top()->getDescription() << endl;
-        undoStack.top()->undo();
-        redoStack.push(move(undoStack.top()));
+        auto command = undoStack.top();
         undoStack.pop();
+
+        command->undo();
+        cout << "Undone: " << command->getDescription() << endl;
     }
 
-    void redo()
+    // Food entry management
+    void addFood(const string &date, const string &foodName, double servings)
     {
-        if (redoStack.empty())
+        auto it = dbManager.getFood(foodName);
+        if (!it)
         {
-            cout << "Nothing to redo." << endl;
+            cerr << "Food not found: " << foodName << endl;
             return;
         }
 
-        cout << "Redoing: " << redoStack.top()->getDescription() << endl;
-        redoStack.top()->execute();
-        undoStack.push(move(redoStack.top()));
-        redoStack.pop();
+        auto command = make_shared<AddFoodCommand>(*this, date, foodName, servings);
+        executeCommand(command);
     }
 
-    void addFoodToLog(const string &date, shared_ptr<Food> food, double servings)
+    void deleteFood(const string &date, size_t index)
     {
-        auto cmd = make_unique<AddEntryCommand>(logs, date, food, servings);
-        executeCommand(move(cmd));
-    }
-
-    void removeFoodFromLog(const string &date, int index)
-    {
-        if (logs.find(date) != logs.end())
+        auto it = dailyLogs.find(date);
+        if (it == dailyLogs.end() || index >= it->second.size())
         {
-            const auto &entries = logs[date].getEntries();
-            if (index >= 0 && index < entries.size())
+            cerr << "Invalid food entry index." << endl;
+            return;
+        }
+
+        auto command = make_shared<DeleteFoodCommand>(*this, date, index);
+        executeCommand(command);
+    }
+
+    // User interface methods
+    void addFoodToLog()
+    {
+        // First, let the user choose how to select a food
+        cout << "\nSelect food by:\n";
+        cout << "1. Browse all foods\n";
+        cout << "2. Search by keywords\n";
+        cout << "Choice: ";
+
+        int choice;
+        cin >> choice;
+        cin.ignore();
+
+        vector<string> foodOptions;
+
+        if (choice == 1)
+        {
+            // List all foods for selection
+            dbManager.listAllFoods();
+
+            // Convert map to vector for indexing
+            for (const auto &[name, food] : dbManager.foods)
             {
-                auto cmd = make_unique<RemoveEntryCommand>(logs, date, index, entries[index]);
-                executeCommand(move(cmd));
+                foodOptions.push_back(name);
             }
-            else
+        }
+        else if (choice == 2)
+        {
+            cout << "Enter keywords (separated by spaces): ";
+            string keywordInput;
+            getline(cin, keywordInput);
+
+            // Split input into keywords
+            vector<string> keywords;
+            stringstream ss(keywordInput);
+            string keyword;
+            while (ss >> keyword)
             {
-                cout << "Invalid entry index." << endl;
+                keywords.push_back(keyword);
             }
-        }
-        else
-        {
-            cout << "No log found for date: " << date << endl;
-        }
-    }
 
-    void setCurrentDate(const string &date)
-    {
-        if (validateDateFormat(date))
-        {
-            currentDate = date;
-            cout << "Current date set to: " << currentDate << endl;
-        }
-        else
-        {
-            cout << "Invalid date format. Please use YYYY-MM-DD format." << endl;
-        }
-    }
-
-    string getCurrentDate() const
-    {
-        return currentDate;
-    }
-
-    void displayCurrentLog() const
-    {
-        cout << "Log for " << currentDate << ":" << endl;
-        if (logs.find(currentDate) != logs.end())
-        {
-            logs.at(currentDate).displayEntries();
-        }
-        else
-        {
-            cout << "No entries for today." << endl;
-        }
-    }
-
-    void displayLogForDate(const string &date) const
-    {
-        cout << "Log for " << date << ":" << endl;
-        if (logs.find(date) != logs.end())
-        {
-            logs.at(date).displayEntries();
-        }
-        else
-        {
-            cout << "No entries for this date." << endl;
-        }
-    }
-
-    void loadLogs()
-    {
-        try
-        {
-            ifstream file(logFilePath);
-            if (!file.is_open())
+            if (keywords.empty())
             {
-                cout << "No existing log file found. Starting with empty logs." << endl;
+                cout << "No keywords provided." << endl;
                 return;
             }
 
-            json j;
-            file >> j;
+            cout << "Match: 1. All keywords or 2. Any keyword? ";
+            int matchChoice;
+            cin >> matchChoice;
+            cin.ignore();
 
-            for (const auto &[date, entries] : j.items())
+            bool matchAll = (matchChoice == 1);
+            auto vec = dbManager.searchFoodsByKeywords(keywords, matchAll);
+            for (const auto &food : vec)
             {
-                for (const auto &entry : entries)
-                {
-                    string foodName = entry["name"];
-                    double servings = entry["servings"];
-
-                    auto food = dbManager.findFoodByName(foodName);
-                    if (food)
-                    {
-                        logs[date].addEntry(food, servings);
-                    }
-                }
+                foodOptions.push_back(food->getName());
             }
 
-            cout << "Logs loaded successfully." << endl;
-        }
-        catch (const exception &e)
-        {
-            cout << "Error loading logs: " << e.what() << endl;
-        }
-    }
-
-    void saveLogs()
-    {
-        try
-        {
-            json j;
-            for (const auto &[date, log] : logs)
+            if (foodOptions.empty())
             {
-                j[date] = log.toJson();
+                cout << "No foods match the given keywords." << endl;
+                return;
             }
 
-            ofstream file(logFilePath);
-            file << j.dump(2);
-            cout << "Logs saved successfully." << endl;
+            // Display the matching foods
+            cout << "\nMatching Foods:\n";
+            for (size_t i = 0; i < foodOptions.size(); i++)
+            {
+                cout << (i + 1) << ". " << foodOptions[i] << endl;
+            }
         }
-        catch (const exception &e)
+        else
         {
-            cout << "Error saving logs: " << e.what() << endl;
-        }
-    }
-
-    void showUndoHistory() const
-    {
-        if (undoStack.empty())
-        {
-            cout << "No actions to undo." << endl;
+            cout << "Invalid choice." << endl;
             return;
         }
 
-        cout << "Actions that can be undone:" << endl;
-        cout << "-------------------------" << endl;
-
-        stack<unique_ptr<Command>> tempStack;
-        int count = 0;
-
-        // Use a temporary container to not modify the original stack
-        while (!const_cast<stack<unique_ptr<Command>> &>(undoStack).empty())
+        // Let the user select a food
+        if (foodOptions.empty())
         {
-            auto &cmd = const_cast<stack<unique_ptr<Command>> &>(undoStack).top();
-            cout << count++ << ": " << cmd->getDescription() << endl;
-            tempStack.push(move(const_cast<stack<unique_ptr<Command>> &>(undoStack).top()));
-            const_cast<stack<unique_ptr<Command>> &>(undoStack).pop();
+            cout << "No foods available for selection." << endl;
+            return;
         }
 
-        // Restore the original stack
+        cout << "\nSelect food number (1-" << foodOptions.size() << "): ";
+        int foodIndex;
+        cin >> foodIndex;
+
+        if (foodIndex < 1 || foodIndex > static_cast<int>(foodOptions.size()))
+        {
+            cout << "Invalid food selection." << endl;
+            return;
+        }
+
+        string selectedFood = foodOptions[foodIndex - 1];
+
+        // Ask for number of servings
+        cout << "Enter number of servings: ";
+        double servings;
+        cin >> servings;
+        cin.ignore();
+
+        if (servings <= 0)
+        {
+            cout << "Invalid number of servings." << endl;
+            return;
+        }
+
+        // Add the food to the log
+        addFood(currentDate, selectedFood, servings);
+    }
+
+    void deleteFoodFromLog()
+    {
+        displayDailyLog(currentDate);
+
+        auto it = dailyLogs.find(currentDate);
+        if (it == dailyLogs.end() || it->second.empty())
+        {
+            cout << "No entries to delete." << endl;
+            return;
+        }
+
+        cout << "Enter entry number to delete: ";
+        int index;
+        cin >> index;
+        cin.ignore();
+
+        if (index < 1 || index > static_cast<int>(it->second.size()))
+        {
+            cout << "Invalid entry number." << endl;
+            return;
+        }
+
+        deleteFood(currentDate, index - 1);
+    }
+
+    void changeDate()
+    {
+        cout << "Enter date (YYYY-MM-DD): ";
+        string date;
+        cin >> date;
+        cin.ignore();
+
+        setCurrentDate(date);
+    }
+
+    void showUndoStack() const
+    {
+        if (undoStack.empty())
+        {
+            cout << "Undo stack is empty." << endl;
+            return;
+        }
+
+        cout << "\nUndo Stack (latest first):\n";
+
+        // Create a temporary stack to display in reverse order
+        stack<shared_ptr<Command>> tempStack = undoStack;
+        int count = 1;
+
         while (!tempStack.empty())
         {
-            const_cast<stack<unique_ptr<Command>> &>(undoStack).push(move(tempStack.top()));
+            cout << count++ << ". " << tempStack.top()->getDescription() << endl;
             tempStack.pop();
         }
+
+        cout << endl;
+    }
+    double getTotalCaloriesForDate(const string &date) const
+    {
+        auto it = dailyLogs.find(date);
+        if (it == dailyLogs.end())
+        {
+            return 0.0;
+        }
+
+        double totalCalories = 0.0;
+        for (const auto &entry : it->second)
+        {
+            totalCalories += entry.calories;
+        }
+        return totalCalories;
     }
 };
 
@@ -1146,7 +1244,7 @@ class ProfileManager
 {
 private:
     UserProfile userProfile;
-    LogManager &logManager;
+    FoodDiary& foodDiary;
     string profileFilePath;
 
     string getActivityLevelString(ActivityLevel level) const
@@ -1197,8 +1295,8 @@ private:
     }
 
 public:
-    ProfileManager(LogManager &lm, const string &profileFile)
-        : logManager(lm), profileFilePath(profileFile)
+    ProfileManager(FoodDiary &fd, const string &profileFile)
+        : foodDiary(fd), profileFilePath(profileFile)
     {
         loadProfile();
     }
@@ -1292,7 +1390,7 @@ public:
 
         // This assumes your LogManager class has a method to get the total calories for a date
         // Modify this part based on your LogManager implementation
-        consumedCalories = logManager.getTotalCaloriesForDate(date);
+        consumedCalories = foodDiary.getTotalCaloriesForDate(date);
 
         // Calculate difference
         double calorieDifference = consumedCalories - calorieTarget;
@@ -1319,21 +1417,34 @@ public:
         cout << "Enter age: ";
         int age;
         cin >> age;
-        userProfile.setAge(age);
-
+        if (age < 0 || age > 1000) {
+            cout << "Invalid age. Please enter a valid age." << endl;
+            return;
+        }
+        
         cout << "Enter weight (kg): ";
         double weight;
         cin >> weight;
-
+        if (weight <= 0) {
+            cout << "Invalid weight. Please enter a valid weight." << endl;
+            return;
+        }
+        
         DailyProfile dailyProfile = userProfile.getDailyProfile(date);
-        dailyProfile.setWeight(weight);
-
+        
         cout << "Select activity level (0 = Sedentary, 1 = Lightly Active, "
-             << "2 = Moderately Active, 3 = Very Active, 4 = Extremely Active): ";
+        << "2 = Moderately Active, 3 = Very Active, 4 = Extremely Active): ";
         int activityChoice;
         cin >> activityChoice;
+        if (activityChoice < 0 || activityChoice > 4) {
+            cout << "Invalid activity level. Please select a valid option." << endl;
+            return;
+        }
+        
+        
+        userProfile.setAge(age);
+        dailyProfile.setWeight(weight);
         dailyProfile.setActivityLevel(static_cast<ActivityLevel>(activityChoice));
-
         userProfile.setDailyProfile(date, dailyProfile);
 
         cout << "Select calorie calculation method (0 = Harris-Benedict, 1 = Mifflin-St Jeor): ";
@@ -1388,24 +1499,15 @@ public:
     }
 };
 
-// Add this method to your LogManager class
-double LogManager::getTotalCaloriesForDate(const string &date) const
-{
-    if (logs.find(date) != logs.end())
-    {
-        return logs.at(date).getTotalCalories();
-    }
-    return 0.0;
-}
 
 // Command Line Interface class
 class DietAssistantCLI
 {
 private:
     FoodDatabaseManager dbManager;
-    bool running;
-    LogManager logManager;
+    FoodDiary foodDiary;
     ProfileManager profileManager;
+    bool running;
 
     void displayMenu()
     {
@@ -1416,46 +1518,75 @@ private:
         cout << "4. Create composite food\n";
         cout << "5. List all foods\n";
         cout << "6. Save database\n";
-        cout << "7. View today's log (" << logManager.getCurrentDate() << ")" << endl;
-        cout << "8. Add food to log" << endl;
-        cout << "9. Remove food from log" << endl;
-        cout << "10. Change active date" << endl;
-        cout << "11. View log for specific date" << endl;
-        cout << "12. Undo last action" << endl;
-        cout << "13. Show undo history" << endl;
-        cout << "14. Save logs" << endl;
-        cout << "15. View user profile" << endl;
-        cout << "16. Update user profile" << endl;
-        // cout << "17. View daily profile" << endl;
-        // cout << "18. Update daily profile" << endl;
-        cout << "17. Change calorie calculation method" << endl;
-        cout << "18. View calorie summary" << endl;
-        cout << "0. Exit" << endl;
+        cout << "7. View Today's Log\n";
+        cout << "8. Add Food Entry\n";
+        cout << "9. Delete Food Entry\n";
+        cout << "10. Change Current Date\n";
+        cout << "11. Undo Last Action\n";
+        cout << "12. View User Profile\n";
+        cout << "13. Update User Profile\n";
+        cout << "14. Change calorie calculation method\n";
+        cout << "15. View Calorie summary\n";
+        cout << "16. Exit\n";
         cout << "==============================\n";
-        cout << "Enter choice (0-18): ";
+        cout << "Enter choice (1-17): ";
     }
 
     void searchFoods()
     {
-        cout << "\nEnter search term: ";
-        string query;
-        cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        getline(cin, query);
-
-        vector<shared_ptr<Food>> results = dbManager.searchFoods(query);
-
-        if (results.empty())
+        cout << "1. Do you want to search by keywords? (yes/no): ";
+        string choice;
+        cin >> choice;
+        if (choice == "yes")
         {
-            cout << "No foods found matching '" << query << "'." << endl;
+            cout << "Enter keywords (separated by spaces): ";
+            string keywordInput;
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            getline(cin, keywordInput);
+
+            // Split input into keywords
+            vector<string> keywords;
+            stringstream ss(keywordInput);
+            string keyword;
+            while (ss >> keyword)
+            {
+                keywords.push_back(keyword);
+            }
+
+            if (keywords.empty())
+            {
+                cout << "No keywords provided." << endl;
+                return;
+            }
+
+            cout << "Match: 1. All keywords or 2. Any keyword? ";
+            int matchChoice;
+            cin >> matchChoice;
+
+            bool matchAll = (matchChoice == 1);
+            auto vec = dbManager.searchFoodsByKeywords(keywords, matchAll);
+            for (const auto &food : vec)
+            {
+                cout << food->getName() << " (" << food->getType() << ") - "
+                     << food->getCalories() << " calories" << endl;
+            }
         }
         else
         {
-            cout << "\n=== Search Results for '" << query << "' (" << results.size() << " found) ===" << endl;
-            for (size_t i = 0; i < results.size(); ++i)
+            cout << "Enter food name: ";
+            string name;
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            getline(cin, name);
+
+            shared_ptr<Food> food = dbManager.getFood(name);
+            if (food)
             {
-                cout << i + 1 << ". " << results[i]->getName()
-                     << " (" << results[i]->getType() << ") - "
-                     << results[i]->getCalories() << " calories" << endl;
+                cout << "\n=== Food Details ===" << endl;
+                food->display();
+            }
+            else
+            {
+                cout << "Food '" << name << "' not found." << endl;
             }
         }
     }
@@ -1605,179 +1736,6 @@ private:
         }
     }
 
-    void handleViewTodaysLog()
-    {
-        logManager.displayCurrentLog();
-    }
-
-    void handleAddFoodToLog()
-    {
-        cout << "\n==== Add Food to Log (" << logManager.getCurrentDate() << ") ====" << endl;
-
-        // Search for food first
-        cout << "\n1. Search by name" << endl;
-        cout << "2. Search by keywords (match any)" << endl;
-        cout << "3. Search by keywords (match all)" << endl;
-        cout << "0. Cancel" << endl;
-        cout << "Choose an option: ";
-
-        int option;
-        cin >> option;
-        cin.ignore();
-
-        if (option == 0)
-            return;
-
-        vector<shared_ptr<Food>> results;
-
-        if (option == 1)
-        {
-            cout << "Enter name to search: ";
-            string name;
-            getline(cin, name);
-            results = dbManager.searchFoods(name);
-        }
-        else if (option == 2 || option == 3)
-        {
-            cout << "Enter keywords (separated by spaces): ";
-            string keywordsStr;
-            getline(cin, keywordsStr);
-
-            vector<string> keywords;
-            istringstream iss(keywordsStr);
-            string keyword;
-            while (iss >> keyword)
-            {
-                keywords.push_back(keyword);
-            }
-
-            bool matchAll = (option == 3);
-            results = dbManager.searchFoodsByKeywords(keywords, matchAll);
-        }
-
-        if (results.empty())
-        {
-            cout << "No matching foods found." << endl;
-            return;
-        }
-
-        cout << "\nFound " << results.size() << " matching foods:" << endl;
-        for (size_t i = 0; i < results.size(); ++i)
-        {
-            cout << "[" << i << "] ";
-            results[i]->display();
-        }
-
-        cout << "\nSelect food by number: ";
-        int foodIndex;
-        cin >> foodIndex;
-
-        if (foodIndex < 0 || foodIndex >= results.size())
-        {
-            cout << "Invalid selection." << endl;
-            cin.ignore();
-            return;
-        }
-
-        cout << "Enter number of servings: ";
-        double servings;
-        cin >> servings;
-        cin.ignore();
-
-        logManager.addFoodToLog(logManager.getCurrentDate(), results[foodIndex], servings);
-        cout << servings << " serving(s) of " << results[foodIndex]->getName()
-             << " added to log for " << logManager.getCurrentDate() << endl;
-    }
-
-    void handleRemoveFoodFromLog()
-    {
-        cout << "\n==== Remove Food from Log (" << logManager.getCurrentDate() << ") ====" << endl;
-
-        logManager.displayCurrentLog();
-
-        cout << "\nEnter index of food to remove (or -1 to cancel): ";
-        int index;
-        cin >> index;
-        cin.ignore();
-
-        if (index == -1)
-            return;
-
-        logManager.removeFoodFromLog(logManager.getCurrentDate(), index);
-    }
-
-    void handleChangeActiveDate()
-    {
-        cout << "\n==== Change Active Date ====" << endl;
-        cout << "Current active date: " << logManager.getCurrentDate() << endl;
-        cout << "Enter new date (YYYY-MM-DD): ";
-
-        cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Clear the input buffer
-        string date;
-        getline(cin, date);
-
-        logManager.setCurrentDate(date);
-        // now set date in profile manager
-        // no fetch from recent date
-    }
-
-    void handleViewLogForDate()
-    {
-        cout << "\n==== View Log for Specific Date ====" << endl;
-        cout << "Enter date (YYYY-MM-DD): ";
-
-        string date;
-        getline(cin, date);
-
-        logManager.displayLogForDate(date);
-    }
-
-    void handleUndo()
-    {
-        logManager.undo();
-    }
-
-    void handleShowUndoHistory()
-    {
-        logManager.showUndoHistory();
-    }
-
-    void handleSaveLogs()
-    {
-        logManager.saveLogs();
-    }
-
-    // Add these methods to your DietAssistantCLI class
-    void handleViewUserProfile()
-    {
-        profileManager.displayUserProfile(logManager.getCurrentDate());
-    }
-
-    void handleUpdateUserProfile()
-    {
-        profileManager.updateUserProfile(logManager.getCurrentDate());
-    }
-
-    void handleViewDailyProfile()
-    {
-        profileManager.displayDailyProfile(logManager.getCurrentDate());
-    }
-
-    void handleUpdateDailyProfile()
-    {
-        profileManager.updateDailyProfile(logManager.getCurrentDate());
-    }
-
-    void handleChangeCalculationMethod()
-    {
-        profileManager.changeCalculationMethod();
-    }
-
-    void handleViewCalorieSummary()
-    {
-        profileManager.displayCalorieSummary(logManager.getCurrentDate());
-    }
-
     void handleExit()
     {
         if (dbManager.isModified())
@@ -1796,15 +1754,11 @@ private:
     }
 
 public:
-    //    // Constructor with default database and log file paths
-    //    DietAssistantCLI(const string& databasePath = "food_database.json", const string& logFile = "food_logs.json")
-    //    : dbManager(databasePath), logManager(dbManager, logFile), running(false) {}
-    // Updated constructor with profile file support
-    DietAssistantCLI(FoodDatabaseManager &manager, const string &logFile, const string &profileFile)
-        : dbManager(manager),
-          logManager(manager, logFile),
-          profileManager(logManager, profileFile),
-          running(true) {}
+    DietAssistantCLI(const string &databasePath = "food_database.json", const string &logPath = "food_log.json", const string &profilePath = "user_profile.json")
+        : dbManager(databasePath), foodDiary(dbManager, logPath), profileManager(foodDiary, profilePath), running(false)
+    {
+    }
+
     void start()
     {
         running = true;
@@ -1840,48 +1794,33 @@ public:
                 dbManager.saveDatabase();
                 break;
             case 7:
-                handleViewTodaysLog();
+                foodDiary.displayDailyLog(foodDiary.getCurrentDate());
                 break;
             case 8:
-                handleAddFoodToLog();
+                foodDiary.addFoodToLog();
                 break;
             case 9:
-                handleRemoveFoodFromLog();
+                foodDiary.deleteFoodFromLog();
                 break;
             case 10:
-                handleChangeActiveDate();
+                foodDiary.changeDate();
                 break;
             case 11:
-                handleViewLogForDate();
+                foodDiary.undo();
                 break;
             case 12:
-                handleUndo();
+                profileManager.displayUserProfile(foodDiary.getCurrentDate());
                 break;
             case 13:
-                handleShowUndoHistory();
+                profileManager.updateUserProfile(foodDiary.getCurrentDate());
                 break;
             case 14:
-                handleSaveLogs();
+                profileManager.changeCalculationMethod();
                 break;
             case 15:
-                handleViewUserProfile();
+                profileManager.displayCalorieSummary(foodDiary.getCurrentDate());
                 break;
             case 16:
-                handleUpdateUserProfile();
-                break;
-            // case 17:
-            //     handleViewDailyProfile();
-            //     break;
-            // case 18:
-            //     handleUpdateDailyProfile();
-            //     break;
-            case 17:
-                handleChangeCalculationMethod();
-                break;
-            case 18:
-                handleViewCalorieSummary();
-                break;
-            case 0:
                 handleExit();
                 break;
             default:
@@ -1895,16 +1834,7 @@ public:
 
 int main()
 {
-    // DietAssistantCLI dietAssistant;
-    // dietAssistant.start();
-    string dbFile = "food_database.json";
-    string logFile = "food_logs.json";
-    string profileFile = "user_profile.json";
-
-    FoodDatabaseManager dbManager(dbFile);
-    dbManager.loadDatabase();
-
-    DietAssistantCLI cli(dbManager, logFile, profileFile);
-    cli.start();
+    DietAssistantCLI dietAssistant;
+    dietAssistant.start();
     return 0;
 }

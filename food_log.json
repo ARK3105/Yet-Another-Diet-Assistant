@@ -1,0 +1,33 @@
+{
+    "2025-04-01": [
+        {
+            "calories": 430.0,
+            "food": "Baked Potato",
+            "servings": 2.0
+        },
+        {
+            "calories": 0.0,
+            "food": "pencil",
+            "servings": 4.0
+        }
+    ],
+    "2025-04-02": [
+        {
+            "calories": 32.0,
+            "food": "Lettuce",
+            "servings": 4.0
+        }
+    ],
+    "2025-04-07": [
+        {
+            "calories": 855.0,
+            "food": "Chicken Breast",
+            "servings": 3.0
+        },
+        {
+            "calories": 997.5,
+            "food": "Cheese Sandwich",
+            "servings": 3.0
+        }
+    ]
+}
